@@ -85,6 +85,20 @@ Camino elegido: `MPV_RENDER_API_TYPE_SW` → RGBA en memoria → `queue.write_te
   conversion, scaling, and OSD rendering, is done on the CPU, single-threaded"*.
   Es un riesgo medido en el slice 0, no una opinión.
 
+Reparto de crates, corregido tras revisar el código (ver `BITACORA.md`):
+
+- `libmpv2` (7.0.1) para el ciclo de vida del player, comandos, propiedades y
+  eventos.
+- Su enum `RenderParam` **solo tiene variantes de OpenGL**, así que el contexto
+  de render por software se escribe sobre `libmpv2-sys` (4.0.1: bindings
+  pregenerados, sin libclang, enlaza con `cargo:rustc-link-lib=mpv`). Ese módulo
+  `mpv_render` es el único `unsafe` del crate, y expone una API segura.
+- Ojo: `libmpv-sys` en crates.io es de otro autor y está muerto (2020). El
+  correcto es `libmpv2-sys`.
+
+En Windows hace falta un import library: `lib /DEF:mpv.def /OUT:mpv.lib
+/MACHINE:X64`, y `libmpv-2.dll` junto al ejecutable.
+
 Descartados:
 
 - **GL render + FBO**: rápido, pero exige compartir contexto OpenGL con el wgpu
@@ -136,9 +150,13 @@ por DirectWrite y en Linux por fontconfig, lo que reemplaza la heurística de
 de "fuente no instalada" pasa a ser el log callback de libass
 (`ass_set_message_cb`).
 
-Las crates existentes están abandonadas (`libass` 0.2.0, 2020). Se escribe un
-`-sys` propio con bindgen: ~150 líneas de `unsafe`, sin reimplementar el
-rasterizador.
+Las crates existentes están abandonadas (`libass` 0.2.0, 2020). Lo que se escribe
+es la **declaración** del API: cuatro tipos opacos y unas quince funciones
+(`ass_library_init`, `ass_renderer_init`, `ass_set_frame_size`, `ass_set_fonts`,
+`ass_read_memory`, `ass_render_frame`, …), a mano y no con bindgen, porque el API
+cabe en una pantalla y `extern "C"` a mano es material de aprendizaje real.
+Bindgen solo si el API crece. El rasterizador sigue siendo libass: no se
+reimplementa nada.
 
 ### 3.4 La línea entre crate y código propio
 
