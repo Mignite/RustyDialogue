@@ -4,3 +4,7 @@
 /third_party/mpv/*.dll
 /third_party/mpv/*.lib
 /third_party/mpv/*.exp
+
+# videos de prueba: se regeneran con ffmpeg (ver docs/checklists/slice-0a-mpv.md)
+/testdata/
+

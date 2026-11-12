@@ -29,11 +29,19 @@ Conceptos nuevos (uno por paso, no todos juntos): enlace con biblioteca C,
 
 ## Pasos
 
-- [ ] **1. Crate vacío.** `crates/player` con `libmpv2 = "7"` (feature `render`)
+- [x] **1. Crate vacío.** `crates/player` con `libmpv2 = "7"` (feature `render`)
       y `libmpv2-sys = "4"` como dependencias.
-      *Verificación*: `cargo build -p player` termina. Si falla al enlazar,
-      el mensaje de `link.exe` o `ld` dice exactamente qué falta — es la primera
-      lección del slice.
+      *Hecho*: `cargo build -p rod-player` compila. El enlace se probó con
+      `crates/player/examples/link_smoke.rs`, que imprime
+      `mpv_client_api_version = 0x20006` (igual al header:
+      `MPV_MAKE_VERSION(2, 6)`), cargando `libmpv-2.dll` desde el `PATH`.
+      `crates/player/build.rs` emite `rustc-link-search` a `third_party/mpv`
+      solo en Windows.
+      **Hallazgo**: `libmpv2` 7.0.1 **no expone eventos** (solo `new`,
+      `with_initializer`, `command`, `set_property`, `get_property`,
+      `get_time_ns/us`). El bucle de eventos se escribe sobre
+      `libmpv2_sys::mpv_wait_event` en un módulo `unsafe` propio; mientras
+      tanto, el estado se consulta con `get_property`.
 
 - [ ] **2. Abrir un video sin dibujar nada.** Configurar mpv con `vo=null`,
       `ao=null`, `config=no`; cargar el archivo y esperar el evento de archivo
