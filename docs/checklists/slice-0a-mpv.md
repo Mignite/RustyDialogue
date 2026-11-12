@@ -37,18 +37,33 @@ Conceptos nuevos (uno por paso, no todos juntos): enlace con biblioteca C,
       `MPV_MAKE_VERSION(2, 6)`), cargando `libmpv-2.dll` desde el `PATH`.
       `crates/player/build.rs` emite `rustc-link-search` a `third_party/mpv`
       solo en Windows.
-      **Hallazgo**: `libmpv2` 7.0.1 **no expone eventos** (solo `new`,
-      `with_initializer`, `command`, `set_property`, `get_property`,
-      `get_time_ns/us`). El bucle de eventos se escribe sobre
-      `libmpv2_sys::mpv_wait_event` en un módulo `unsafe` propio; mientras
-      tanto, el estado se consulta con `get_property`.
+      **Hallazgo (corregido)**: `libmpv2` 7.0.1 **sí** expone eventos, en
+      `libmpv2::events` (`wait_event`, `Event::FileLoaded`, `Event::EndFile`,
+      `observe_property`), reexportado desde `mpv.rs` con `pub use`. Lo que no
+      cubre es el render por software: `libmpv2::render` solo tiene los
+      parámetros de OpenGL (`RenderParam`), no `MPV_RENDER_PARAM_SW_*`. El
+      contexto SW se escribe con `libmpv2_sys` en un módulo `unsafe` propio.
+      SetData solo está implementado para `f64`, `i64`, `bool` y `String` —
+      no para `&str`.
 
-- [ ] **2. Abrir un video sin dibujar nada.** Configurar mpv con `vo=null`,
+- [x] **2. Abrir un video sin dibujar nada.** Configurar mpv con `vo=null`,
       `ao=null`, `config=no`; cargar el archivo y esperar el evento de archivo
       cargado; leer la propiedad `duration`.
-      *Verificación*: imprime la duración real del video de prueba (compárala con
-      la de `mpv`). Si no coincide, el problema está en la configuración, no en
-      el render.
+      *Hecho*: `rod_player::open(path)` en `crates/player/src/lib.rs` crea el
+      handle con `Mpv::with_initializer` (las opciones `vo`/`ao` solo se leen al
+      inicializar, de ahí el closure), lanza `command("loadfile", ...)` y espera
+      en `wait_event(-1.0)` hasta `Event::FileLoaded`, con `Event::EndFile` como
+      salida de error.
+      *Verificado*: `duration = 3.000 s` para el clip de prueba; `time-pos`
+      avanza 0.10 por cada 100 ms dormidos y el reloj de pared dio 3.04 s para
+      3.00 s de medio — reproducción en tiempo real, no *untimed*.
+      *Control*: `set_property("pause", true)` congela `time-pos`, y
+      `command("seek", &["2.0", "absolute"])` lo lleva a 2.00 s. El segundo
+      argumento de `seek` es el modo: sin `"absolute"` el salto es relativo. El
+      seek no es instantáneo (hay que decodificar hasta el punto), así que
+      conviene sondear `time-pos` en vez de leerlo una vez.
+      *Nota*: con `vo=null` no se ve nada; la reproducción se comprueba por
+      `time-pos`. La ventana con video real es el slice 0c.
 
 - [ ] **3. Crear el contexto de render SW.** Pasar a `vo=libmpv` y crear el
       contexto con `mpv_render_context_create` y
