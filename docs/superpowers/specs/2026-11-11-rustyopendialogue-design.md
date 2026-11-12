@@ -171,17 +171,20 @@ Regla del proyecto:
 
 ## 4. Arquitectura
 
-Workspace de cuatro crates:
+Workspace de cuatro crates. El directorio dice el papel; el nombre del paquete
+va prefijado `rod-`, porque un paquete llamado `core` **tapa el `core` del
+sysroot** en todo crate que dependa de él (`core::time::Duration` deja de
+existir y las macros derivadas fallan al expandir `::core::fmt`):
 
 ```
-RustyOpenDialogue/
-  crates/core/     dominio puro: tiempo, SRT, ASS, islas de audio
-  crates/subs/     FFI de libass + caché de bitmaps + composición lógica
-  crates/player/   libmpv: transporte, frames, reloj
-  crates/app/      iced: update/view, timeline, paneles, IPC de escritorio
+RustyOpenDialogue/          (manifiesto virtual: solo [workspace])
+  crates/core/     rod-core     dominio puro: tiempo, SRT, ASS, islas de audio
+  crates/subs/     rod-subs     FFI de libass + caché de bitmaps + composición
+  crates/player/   rod-player   libmpv: transporte, frames, reloj
+  crates/app/      rod-app      iced: update/view, timeline, paneles, IPC
 ```
 
-### 4.1 `core`
+### 4.1 `rod-core`
 
 Sin dependencias de UI ni de sistema. Portado desde `src/utils/*.ts`:
 
@@ -200,7 +203,7 @@ Los 306 tests de vitest son la especificación. Se portan uno a uno; cuando un
 comportamiento esté documentado como limitación (por ejemplo, que importar un
 evento fusionado pierde los colores por línea), se porta el test que la fija.
 
-### 4.2 `subs`
+### 4.2 `rod-subs`
 
 `Renderer` envuelve el ciclo de libass:
 
@@ -226,7 +229,7 @@ string en memoria, no sobre un archivo.
 El `detect_change` de `ass_render_frame` evita re-subir bitmaps cuando el tiempo
 no cambió.
 
-### 4.3 `player`
+### 4.3 `rod-player`
 
 ```rust
 pub struct Frame { pub width: u32, pub height: u32, pub rgba: Vec<u8>, pub pts: f64 }
@@ -253,7 +256,7 @@ Configuración de mpv: `vo=libmpv`, `hwdec=auto-safe`, `hr-seek=yes`,
 El playhead de la app es `time-pos` observado, no un temporizador: el snapping y
 el seguimiento del timeline se mueven con el reloj real del player.
 
-### 4.4 `app`
+### 4.4 `rod-app`
 
 - Un `shader::Primitive` compone **video + subtítulos** en un solo pipeline: un
   quad para el frame, N quads para los bitmaps de libass. `prepare` recibe
@@ -321,6 +324,8 @@ warnings` y `cargo test` en verde, en Windows y en Linux.
   ventana de iced con un `Canvas` que dibuja algo. libmpv y libass enlazados;
   un frame de video y un `.ass` de fixture renderizados a pantalla. **Criterio de
   salida:** se ve un frame con subtítulos y se mide el costo por frame a 1080p.
+  Se descompone en `slice-0z-bootstrap.md` (workspace y ventana), 0a (mpv),
+  0b (libass) y 0c (ventana con ambos).
 - **Slice 1 — `core`.** Port de `time`, `srt`, `ass`, `islands` con sus tests.
 - **Slice 2 — `subs`.** Render estático de un `.ass` a PNG y comparación contra el
   oráculo de mpv.
