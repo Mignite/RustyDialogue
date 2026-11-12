@@ -141,8 +141,13 @@ y estarías depurando el toolkit, no tu código.
 
 ## Paso 7 — CI
 
-- [ ] `.github/workflows/ci.yml`: matriz `windows-latest` / `ubuntu-latest`,
+- [x] `.github/workflows/ci.yml`: matriz `windows-latest` / `ubuntu-latest`,
   pasos `fmt --check`, `clippy -D warnings`, `test`.
+
+  *Hecho*: primer run 43243883199 en verde, windows 3m41s y ubuntu 2m28s. Los
+  paquetes de sistema para compilar iced en Linux fueron
+  `libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev libxrandr-dev
+  libxi-dev libxcursor-dev`.
 
   **Aviso**: el repo aún no tiene remoto (`git remote -v` está vacío), así que
   el workflow no corre hasta que exista un repositorio en GitHub. El archivo se
