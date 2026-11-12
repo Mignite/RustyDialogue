@@ -24,7 +24,7 @@ dependencia por ruta, arquitectura Elm de iced, `canvas::Program`.
 
 ## Paso 0 — Árbol limpio
 
-- [ ] La raíz hoy arrastra cambios sin commitear: `Cargo.toml` con `iced`
+- [x] La raíz hoy arrastra cambios sin commitear: `Cargo.toml` con `iced`
   añadido, `Cargo.lock` sin seguimiento y `src/main.rs` con el `Hello, world!`
   de la plantilla. Commitea ese estado (o descártalo) antes de reestructurar:
   si no, el diff del slice mezcla lo viejo con lo nuevo y no se puede leer.
@@ -33,16 +33,16 @@ dependencia por ruta, arquitectura Elm de iced, `canvas::Program`.
 
 ## Paso 1 — Manifiesto virtual y cuatro crates vacíos
 
-- [ ] Borra el `[package]` de la raíz y deja solo `[workspace]` con `members`
+- [x] Borra el `[package]` de la raíz y deja solo `[workspace]` con `members`
   (puedes usar el glob `"crates/*"`) y `resolver = "3"`.
   **Concepto**: un *virtual manifest* no es un paquete, es la lista de miembros.
   **Trampa**: `resolver` no se hereda del `edition` de los miembros; si lo
   omites, un workspace virtual se comporta como resolver 1 y las features se
   unifican como en 2015.
-- [ ] Crea los cuatro crates con `cargo new --lib crates/<dir> --name rod-<x>`
+- [x] Crea los cuatro crates con `cargo new --lib crates/<dir> --name rod-<x>`
   (`--name` es lo que desacopla el nombre del directorio). `crates/app` es el
   único sin `--lib`.
-- [ ] Borra `src/main.rs` y el directorio `src/` de la raíz.
+- [x] Borra `src/main.rs` y el directorio `src/` de la raíz.
 
 *Verificación*: `cargo build` compila los cuatro sin warnings; `cargo
 metadata --no-deps --format-version 1` lista exactamente `rod-core`, `rod-subs`,
@@ -50,60 +50,68 @@ metadata --no-deps --format-version 1` lista exactamente `rod-core`, `rod-subs`,
 
 ## Paso 2 — Una sola fuente para versión y edition
 
-- [ ] Pasa `version`, `edition`, `rust-version` y `license` a
-  `[workspace.package]`, y cada crate los hereda con `edition.workspace = true`
-  (etc.). Deja `iced` en `[workspace.dependencies]` y en `rod-app` pide
-  `iced.workspace = true`.
+- [x] Pasa `version`, `edition` y `rust-version` a `[workspace.package]`, y cada
+  crate los hereda con `edition.workspace = true` (etc.).
 
-  **Concepto**: los miembros heredan metadatos; el `.workspace = true` es la
-  única forma de compartir versión entre crates que se publican juntos.
-  **Trade-off**: si un crate necesita una versión distinta de una dependencia,
-  la herencia deja de servir y hay que escribirla explícita. Con cuatro crates
-  del mismo repo, compensa.
-  **Trampa**: `rust-version = "1.88"` es el mínimo que exige iced 0.14; si
-  heredas un MSRV mayor, `cargo build` en la máquina vieja falla con un mensaje
-  sobre `edition2024`.
+  **Concepto**: `[workspace.package]` es una plantilla, no un padre. Ningún
+  miembro hereda nada sin pedirlo con `campo.workspace = true`; es explícito a
+  propósito, porque cada crate es un paquete independiente para Cargo.
+  **Trampa 1**: solo ciertas claves se pueden heredar (`version`, `edition`,
+  `rust-version`, `license`, `authors`, `repository`, …). `name` no: el nombre
+  de un crate nunca se hereda.
+  **Trampa 2**: si pides `license.workspace = true` y la clave no existe en
+  `[workspace.package]`, Cargo falla con `` `workspace.package.license` was not
+  defined ``. Heredar una clave inexistente no es "nada", es error.
+  **Trade-off**: compartir `version` obliga a versionar los cuatro crates juntos.
+  Es lo correcto ahora; si algún día `rod-core` se publica solo, deja de heredar.
 
-*Verificación*: `cargo build` sigue compilando; cambia a propósito la `version`
-del workspace y comprueba con `cargo metadata` que los cuatro se movieron
-juntos. Deshaz el cambio.
+*Verificación*: `cargo metadata --no-deps` muestra `rust_version: "1.88"` en los
+cuatro; borra temporalmente `rust-version` del workspace y comprueba el error,
+luego devuélvela.
 
 ## Paso 3 — `rod-app` es el único binario
 
-- [ ] `rod-app` tiene `src/main.rs` con un `fn main()` que imprime algo. Añade
-  `rod-core` como dependencia por ruta (`rod-core = { path = "../core" }`) y
-  llama desde `main` a una función pública de `rod-core` (un `&'static str`
-  basta; bórralo en el paso siguiente).
+- [x] `crates/app/src/main.rs` con un `fn main()` que imprime algo. Declara
+  `rod-core` en `[workspace.dependencies]` como dependencia por ruta
+  (`{ path = "crates/core" }`), y en `rod-app` pídelo con
+  `rod-core.workspace = true`. Desde `main`, llama a una función pública de
+  `rod-core` (un `&'static str` basta; se borra en el paso siguiente).
 
-  **Concepto**: `rod-core` → `rod_core` en `use` (guion a guion bajo). El
-  grafo de dependencias es explícito: `rod-app` conoce a los otros tres;
-  `rod-core` no conoce a nadie.
+  **Concepto**: `[workspace.dependencies]` no es solo para crates.io; también
+  sirve para dependencias por ruta. La ruta se escribe relativa a la **raíz**
+  del workspace, no al crate que la usa.
+  **Concepto 2**: `rod-core` → `rod_core` en `use` (guion a guion bajo).
   **Trampa**: no añadas todavía `rod-subs` ni `rod-player` a `rod-app` "por si
-  acaso". Una arista que no se usa cuesta compilación y, en un workspace,
-  arrastra las features del otro crate a todas tus builds.
+  acaso". Una arista que no se usa cuesta compilación y arrastra las features
+  del otro crate.
 
 *Verificación*: `cargo run -p rod-app` imprime la cadena que viene de
 `rod-core`; `cargo tree -p rod-app` muestra `rod-core` y nada más.
 
 ## Paso 4 — La ventana
 
-- [ ] Sustituye el `println!` por una aplicación de iced: `fn main() ->
-  iced::Result`, `iced::application(boot, update, view).run()`, un `struct`
-  de estado y un `enum Message` (aunque no haya mensajes todavía).
+- [x] Declara `iced = "0.14.0"` en `[workspace.dependencies]` y pídelo en
+  `rod-app` con `iced.workspace = true`. Sustituye el `println!` por una
+  aplicación de iced: `fn main() -> iced::Result`,
+  `iced::application(boot, update, view).run()`, un `struct` de estado y un
+  `enum Message` (aunque no haya mensajes todavía).
 
   **Concepto**: arquitectura Elm. `update(&mut State, Message)` es la única
   función que muta el estado; `view(&State) -> Element` es pura. El estado es
   tuyo, no de iced.
-  **Trampa**: `Message` debe ser `Send + 'static`; y si `update` devuelve `()`
+  **Trampa 1**: `Message` debe ser `Send + 'static`; y si `update` devuelve `()`
   en vez de `Task`, no puedes encadenar trabajo asíncrono. Empieza con `()`,
   cámbialo cuando lo necesites (slice 3).
+  **Trampa 2**: con `iced.workspace = true` **no** puedes escribir
+  `default-features = false` en el miembro; eso solo se decide en
+  `[workspace.dependencies]`. Las `features` sí puedes añadirlas en el miembro.
 
 *Verificación*: `cargo run -p rod-app` abre una ventana con el título que
 pusiste y se cierra sin error (código de salida 0).
 
 ## Paso 5 — `Canvas`
 
-- [ ] Activa la feature `canvas` en la dependencia de iced (en
+- [x] Activa la feature `canvas` en la dependencia de iced (en
   `[workspace.dependencies]`: `features = ["canvas"]`). Implementa
   `canvas::Program<Message>` para una struct propia y dibuja una figura
   (un círculo o una línea) dentro de `draw`.
@@ -122,9 +130,9 @@ coordenadas en el estado).
 
 ## Paso 6 — El semáforo del slice
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets -- -D warnings`
+- [x] `cargo test --workspace`
 
 *Verificación*: los tres terminan en 0. `--all-targets` incluye tests y
 ejemplos: clippy que solo mira la lib deja pasar lo que más se rompe. Sin

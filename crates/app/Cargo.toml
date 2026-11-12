@@ -1,0 +1,8 @@
+[package]
+name = "rod-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+[dependencies]
+rod-core.workspace = true
+iced.workspace = true
