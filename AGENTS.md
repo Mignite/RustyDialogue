@@ -6,6 +6,10 @@ generado por IA, slices pequeños y verificables.
 - **Diseño y motivos**: `docs/superpowers/specs/2026-11-11-rustyopendialogue-design.md`.
   Leerlo antes de proponer cambios de arquitectura.
 - **Stack**: iced 0.14 + libmpv (render SW → textura wgpu) + libass por FFI propio.
+- **Workspace**: manifiesto virtual; directorios `crates/{core,subs,player,app}`,
+  paquetes `rod-core`, `rod-subs`, `rod-player`, `rod-app`. Nunca un paquete
+  llamado `core`: tapa el `core` del sysroot y rompe `core::time` y las macros
+  derivadas que expanden `::core` (spec §4).
 - **No reintroducir GStreamer**: ya rompió el AppImage de la app Tauri
   (`C:/Dev/OpenDialogue`) por desajuste de plugins core/host.
 - **Invariante**: el preview es un render del `.ass` que se exporta (libass). Si

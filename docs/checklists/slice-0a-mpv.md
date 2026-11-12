@@ -11,13 +11,18 @@ Conceptos nuevos (uno por paso, no todos juntos): enlace con biblioteca C,
 
 ## Preparación
 
-- [ ] **Windows**: descargar el paquete *libmpv-dev* x86_64 de los builds de mpv
-      para Windows (SourceForge `mpv-player-windows/files/libmpv`). Trae
-      `libmpv-2.dll`, `mpv.def`, `include/mpv/*.h`.
-- [ ] Generar el import library para MSVC:
-      `lib /DEF:mpv.def /OUT:mpv.lib /MACHINE:X64`.
-- [ ] Dejar `libmpv-2.dll` y `mpv.lib` en `third_party/mpv/` (la DLL va en
-      `.gitignore`: pesa decenas de MB).
+- [x] **Windows**: descargar el paquete *libmpv-dev* x86_64 de los builds de mpv
+      para Windows (SourceForge `mpv-player-windows/files/libmpv`). Hecho con
+      `mpv-dev-x86_64-20261108-git-55d3feb45c.7z`: trae `libmpv-2.dll`,
+      `libmpv.dll.a` e `include/mpv/*.h`. **No trae `mpv.def`** (el `.dll.a` es
+      de MinGW).
+- [x] Generar el import library para MSVC: el `.def` se saca de
+      `dumpbin /exports` filtrando solo `mpv_*` (la DLL exporta además
+      `opus_*`, `sixel_*` y `Java_java_awt_*` de sus dependencias estáticas), y
+      luego `lib /DEF:mpv.def /OUT:mpv.lib /MACHINE:X64`. Comandos exactos en
+      `third_party/mpv/README.md`.
+- [x] Dejar `libmpv-2.dll` y `mpv.lib` en `third_party/mpv/` (ignorados en
+      `.gitignore`); `mpv.def`, los headers y el README sí se versionan.
 - [ ] **Linux**: `sudo pacman -S mpv` (da `libmpv.so` y los headers).
 - [ ] Verificación de la preparación: `mpv --version` responde, y
       `pkg-config --libs mpv` (Linux) encuentra la biblioteca.

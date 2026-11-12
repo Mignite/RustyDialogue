@@ -1,1 +1,6 @@
 /target
+
+# libmpv: binarios locales, no van al repo (ver third_party/mpv/README.md)
+/third_party/mpv/*.dll
+/third_party/mpv/*.lib
+/third_party/mpv/*.exp
