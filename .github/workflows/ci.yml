@@ -29,7 +29,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev \
-            libxrandr-dev libxi-dev libxcursor-dev
+            libxrandr-dev libxi-dev libxcursor-dev \
+            libmpv-dev
 
       - name: fmt
         run: cargo fmt --all -- --check

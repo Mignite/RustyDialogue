@@ -8,7 +8,7 @@ el `.lib` es derivado.
 | Archivo | Origen | ¿Al repo? |
 |---|---|---|
 | `libmpv-2.dll` | paquete `mpv-dev` de shinchiro | no |
-| `mpv.lib` | generado con `lib.exe` desde `mpv.def` | no |
+| `mpv.lib` | generado con `lib.exe` desde `mpv.def` | **sí** (13 KB, lo necesita el CI de Windows) |
 | `mpv.def` | generado desde los exports de la DLL | sí |
 | `include/mpv/*.h` | paquete `mpv-dev` | sí (son la referencia del FFI) |
 

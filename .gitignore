@@ -1,9 +1,11 @@
 /target
 
 # libmpv: binarios locales, no van al repo (ver third_party/mpv/README.md)
+# excepción: mpv.lib (13 KB) sí se versiona, porque el CI lo necesita para
+# enlazar en Windows y no puede descargar la DLL (SourceForge bloquea agentes).
 /third_party/mpv/*.dll
-/third_party/mpv/*.lib
 /third_party/mpv/*.exp
+!/third_party/mpv/mpv.lib
 
 # videos de prueba: se regeneran con ffmpeg (ver docs/checklists/slice-0a-mpv.md)
 /testdata/
