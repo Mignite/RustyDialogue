@@ -81,17 +81,25 @@ Conceptos nuevos (uno por paso, no todos juntos): enlace con biblioteca C,
       **Observación**: el evento `Deprecated(mpv_event { event_id: 11 })` es
       `MPV_EVENT_IDLE`, que la crate no mapea y entrega en crudo. Es benigno.
 
-- [ ] **4. Renderizar un frame a memoria.** Llamar
+- [x] **4. Renderizar un frame a memoria.** Llamar
       `mpv_render_context_render` con `SW_SIZE`, `SW_FORMAT` (RGB0 o BGRA),
       `SW_STRIDE` y `SW_POINTER` sobre un buffer propio.
-      *Verificación*: el buffer no queda todo en cero y el `pts` que reporta mpv
-      cae dentro de la duración del video.
+      *Hecho*: `RenderContext::render(buf, w, h)` con formato `rgb0` y
+      `stride = width * 4`. En esta API `data` significa dos cosas según el
+      parámetro: para `SW_SIZE`/`SW_STRIDE` es la *dirección* del valor, para
+      `SW_POINTER` es el buffer mismo.
+      *Verificado*: el primer render devuelve el buffer todo en cero —el flag
+      `UPDATE_FRAME` incluye la reconfiguración inicial, así que mpv pide pintar
+      antes de tener el primer frame—; el segundo da 4.17 M de bytes no nulos y
+      el primer píxel es magenta, el inicio del patrón de `testsrc2`.
 
-- [ ] **5. Mirarlo con los ojos.** Escribir el frame a PNG con la crate `image`
+- [x] **5. Mirarlo con los ojos.** Escribir el frame a PNG con la crate `image`
       desde un `examples/dump_frame.rs`.
-      *Verificación*: abres el PNG y es el fotograma correcto, sin franjas ni
-      colores invertidos (si hay franjas, el `stride` está mal; si los colores
-      están cambiados, es el orden de canales — dos errores distintos).
+      *Hecho*: `image 0.25` como `dev-dependency` con solo la feature `png`;
+      `chunks_exact(4)` + `&px[0..3]` para quitar el cuarto byte de `rgb0`.
+      *Verificado*: `testdata/frame.png` (1.27 MB) con las barras en el orden
+      correcto, sin franjas y con el timecode `00:00:00.033` del segundo frame
+      — o sea `stride`, orden de canales y `pts` correctos.
 
 - [ ] **6. Medir.** 100 frames consecutivos de un video 1080p, con
       `std::time::Instant` alrededor de la llamada de render.
