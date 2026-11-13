@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("bytes distintos de cero: {distintos} de {}", buf.len());
         println!("primer píxel: {:?}", &buf[0..4]);
         let mut rgb = Vec::with_capacity(1920 * 1080 * 3);
-        for px in buf.chunks_exact(4) {
+        for px in buf.as_chunks::<4>().0 {
             rgb.extend_from_slice(&px[0..3]);
         }
         image::RgbImage::from_raw(1920, 1080, rgb)

@@ -5,4 +5,5 @@ edition.workspace = true
 rust-version.workspace = true
 [dependencies]
 rod-core.workspace = true
-iced.workspace = true
+rod-player.workspace = true
+iced = { workspace = true, features = ["image-without-codecs"] }

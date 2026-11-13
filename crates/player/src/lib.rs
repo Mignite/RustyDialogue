@@ -1,5 +1,4 @@
 pub mod mpv_render;
-
 use libmpv2::{Mpv, events::Event};
 use mpv_render::RenderContext;
 

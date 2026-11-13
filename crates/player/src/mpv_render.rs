@@ -12,7 +12,7 @@ impl RenderContext {
         let mut params = [
             sys::mpv_render_param {
                 type_: sys::mpv_render_param_type_MPV_RENDER_PARAM_API_TYPE,
-                data: c"rgb0".as_ptr().cast_mut().cast(),
+                data: sys::MPV_RENDER_API_TYPE_SW.as_ptr() as *mut c_void,
             },
             sys::mpv_render_param {
                 type_: sys::mpv_render_param_type_MPV_RENDER_PARAM_INVALID,
@@ -43,7 +43,7 @@ impl RenderContext {
             },
             sys::mpv_render_param {
                 type_: sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_FORMAT,
-                data: b"rgb0\0".as_ptr() as *mut _,
+                data: c"rgb0".as_ptr().cast_mut().cast(),
             },
             sys::mpv_render_param {
                 type_: sys::mpv_render_param_type_MPV_RENDER_PARAM_SW_STRIDE,
