@@ -16,6 +16,16 @@ libertad de memoria (`ass_free_track`), composición alfa.
       0.17.5, con freetype, fribidi y harfbuzz como dependencias.)
 - [ ] **Linux**: `sudo pacman -S libass`, y comprobar con
       `pkg-config --modversion libass`.
+- [x] **El oráculo sin `mpv.exe`.** No hace falta instalar mpv: la DLL de libmpv
+      que ya enlazamos trae su propio libass y compone los subtítulos en el
+      frame. `crates/player/examples/oracle_subs.rs` carga el fixture con
+      `sub-add`, busca el instante con `hr-seek` y guarda
+      `testdata/oracle-subs.png`.
+      *Ojo con el orden*: hay que **drenar** los flags de
+      `mpv_render_context_update` antes del `seek`. El flag pendiente de la
+      carga describe el frame anterior, y si se consume primero el render
+      devuelve el frame 0 con el `time-pos` ya en 1.0. Cuesta 15 minutos y el
+      player real va a repetirlo.
 - [ ] **Verificar el proveedor de fuentes**, que es el punto delicado en Windows:
       inicializar libass con `ASS_FONTPROVIDER_AUTODETECT` y leer el log. Debe
       decir que usa *directwrite* en Windows y *fontconfig* en Linux.
