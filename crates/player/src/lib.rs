@@ -50,4 +50,7 @@ impl Player {
     pub fn mpv(&self) -> &Mpv {
         &self.mpv
     }
+    pub fn render(&self, buf: &mut [u8], width: usize, height: usize) -> libmpv2::Result<()> {
+        self.render.render(buf, width, height)
+    }
 }
