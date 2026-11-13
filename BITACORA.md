@@ -37,3 +37,29 @@ cara.
   una API segura encima. De paso: `libmpv-sys` en crates.io es de otro autor y
   está muerto (2020); el bueno es `libmpv2-sys`.
 - **Dónde quedó:** spec §3.2 y §4.3; checklist `slice-0a-mpv.md`, paso 3.
+
+## 2026-11-13 - la ventana de iced se queda gris con el frame de mpv
+
+- **Intentaba:** mostrar el frame de mpv (1920x1080, RGBA) en un widget `image`
+  con un `Handle::from_rgba` nuevo por frame.
+- **Error literal:** ninguno. La ventana se queda en el fondo gris y el contador
+  marca 18 fps.
+- **Qué estaba mal:** `iced_wgpu` 0.14 no sube imágenes grandes dentro del
+  frame. En `image/cache.rs`, `upload_raster` solo sube de forma síncrona si
+  `image.len() < 2 * 1024 * 1024`; un frame de 1080p son 8 294 400 bytes, así
+  que cae en el camino asíncrono (hilo worker) y esa llamada devuelve `None`,
+  o sea que no se añade ninguna instancia y no se dibuja nada. Y como
+  `Handle::from_rgba` estrena `Id::unique()` cada vez, `trim()` suelta toda
+  imagen que no se haya dibujado en ese frame: la textura que el worker sube
+  llega cuando su handle ya no se usa, y se tira. El ciclo sube y tira 8 MiB
+  por frame sin pintar un solo píxel, y de ahí los 18 fps.
+  El video que sí se vio antes no contradice esto: el clip había terminado
+  (timecode 00:00:02.933 de un clip de 3 s), el handle dejó de cambiar y ese
+  único frame sí llegó a dibujarse desde la caché.
+- **Qué aprendí:** el widget `image` de iced es para iconos, no para video: hay
+  un umbral de 2 MiB y la caché va por identidad de handle, no por contenido.
+  Para un flujo de frames hay que gestionar la textura uno mismo
+  (`shader::Primitive` + `queue.write_texture` sobre una textura creada una
+  sola vez).
+- **Dónde quedó:** `crates/app/examples/video.rs`; checklist `slice-0c-iced.md`
+  paso 3.
