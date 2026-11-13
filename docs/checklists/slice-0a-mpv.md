@@ -65,12 +65,21 @@ Conceptos nuevos (uno por paso, no todos juntos): enlace con biblioteca C,
       *Nota*: con `vo=null` no se ve nada; la reproducción se comprueba por
       `time-pos`. La ventana con video real es el slice 0c.
 
-- [ ] **3. Crear el contexto de render SW.** Pasar a `vo=libmpv` y crear el
+- [x] **3. Crear el contexto de render SW.** Pasar a `vo=libmpv` y crear el
       contexto con `mpv_render_context_create` y
       `MPV_RENDER_API_TYPE_SW`. Todo el `unsafe` vive en un módulo propio
       (`mpv_render.rs`), con una API segura hacia afuera.
-      *Verificación*: la creación no devuelve error y `mpv_render_context_update`
-      devuelve flags distintos de cero al menos una vez.
+      *Hecho*: `RenderContext::new(&Mpv)` arma la lista de parámetros terminada
+      en `MPV_RENDER_PARAM_INVALID` con `API_TYPE = "sw"`, recibe el handle por
+      `mpv.ctx.as_ptr()` (el campo `ctx` de `Mpv` es `pub`) y guarda el
+      `*mut mpv_render_context`; `Drop` llama `mpv_render_context_free`.
+      `Player` posee `render` **antes** de `mpv` en la declaración, porque los
+      campos se sueltan en ese orden y el contexto debe morir antes que el core
+      (la doc de `mpv_render_context_create` avisa de crashes si no).
+      *Verificado*: `update()` devuelve `flags = 1`
+      (`MPV_RENDER_UPDATE_FRAME`) en menos de un segundo.
+      **Observación**: el evento `Deprecated(mpv_event { event_id: 11 })` es
+      `MPV_EVENT_IDLE`, que la crate no mapea y entrega en crudo. Es benigno.
 
 - [ ] **4. Renderizar un frame a memoria.** Llamar
       `mpv_render_context_render` con `SW_SIZE`, `SW_FORMAT` (RGB0 o BGRA),
