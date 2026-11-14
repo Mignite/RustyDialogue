@@ -12,8 +12,13 @@ libertad de memoria (`ass_free_track`), composición alfa.
 
 ## Preparación
 
-- [ ] **Windows**: `vcpkg install libass:x64-windows`. (El port existe: libass
+- [x] **Windows**: `vcpkg install libass:x64-windows`. (El port existe: libass
       0.17.5, con freetype, fribidi y harfbuzz como dependencias.)
+      *Hecho:* 4.2 min. `crates/subs/build.rs` busca `lib/ass.lib` en `ASS_DIR`,
+      `VCPKG_ROOT/installed/x64-windows`, `%USERPROFILE%/vcpkg/...` y
+      `C:/vcpkg/...`, y copia las DLLs junto a los ejecutables (en Windows la
+      búsqueda empieza por el directorio del `.exe`, así que sin eso cada
+      `cargo run` exigiría el PATH a mano).
 - [ ] **Linux**: `sudo pacman -S libass`, y comprobar con
       `pkg-config --modversion libass`.
 - [x] **El oráculo sin `mpv.exe`.** No hace falta instalar mpv: la DLL de libmpv
@@ -26,17 +31,21 @@ libertad de memoria (`ass_free_track`), composición alfa.
       carga describe el frame anterior, y si se consume primero el render
       devuelve el frame 0 con el `time-pos` ya en 1.0. Cuesta 15 minutos y el
       player real va a repetirlo.
-- [ ] **Verificar el proveedor de fuentes**, que es el punto delicado en Windows:
+- [x] **Verificar el proveedor de fuentes**, que es el punto delicado en Windows:
       inicializar libass con `ASS_FONTPROVIDER_AUTODETECT` y leer el log. Debe
       decir que usa *directwrite* en Windows y *fontconfig* en Linux.
       *Verificación*: aparece el nombre del proveedor en el log. Si no aparece,
       libass se compiló sin ese proveedor y hay que resolverlo **antes** de
       seguir (es el motivo por el que existen los avisos de "fuente no
       instalada").
+      *Hecho:* `Using font provider directwrite (with GDI)`, y
+      `fontselect: (Arial, 400, 0) -> ArialMT`. El port de vcpkg **no** arrastra
+      fontconfig, así que no hay `fonts.conf` que configurar. El log se lee por
+      `ass_set_message_cb` (ver el hallazgo de `vsnprintf`).
 
 ## Pasos
 
-- [ ] **1. FFI a mano, sin bindgen.** Declarar solo lo necesario: cuatro tipos
+- [x] **1. FFI a mano, sin bindgen.** Declarar solo lo necesario: cuatro tipos
       opacos (`AssLibrary`, `AssRenderer`, `AssTrack`, `AssFontProvider`) y unas
       quince funciones (`ass_library_init`, `ass_renderer_init`,
       `ass_set_frame_size`, `ass_set_storage_size`, `ass_set_pixel_aspect`,
@@ -45,17 +54,28 @@ libertad de memoria (`ass_free_track`), composición alfa.
       `ass_renderer_done`, `ass_library_done`, `ass_set_message_cb`).
       *Verificación*: compila y `ass_library_init` no devuelve nulo. Bindgen
       queda como plan B solo si el API crece.
+      *Hecho:* `crates/subs/src/ffi.rs` (crudo) y `lib.rs` (`Library`,
+      `Renderer`, `Track`, `Bitmap`). `ASS_FontProvider` sobró: el proveedor se
+      pide con un `int` (`ASS_DefaultFontProvider`), no con un puntero.
 
-- [ ] **2. Leer un `.ass` desde memoria.** Un fixture de tres líneas con dos
+- [x] **2. Leer un `.ass` desde memoria.** Un fixture de tres líneas con dos
       estilos distintos.
       *Verificación*: `ass_read_memory` devuelve un track y el log de libass no
       reporta error de parseo.
+      *Hecho:* el log muestra los dos estilos y `Added subtitle file: <memory>
+      (3 styles, 2 events)` (3 porque libass añade `Default`).
 
-- [ ] **3. Rasterizar un instante.** `ass_render_frame(track, 1000 ms, &changed)`
+- [x] **3. Rasterizar un instante.** `ass_render_frame(track, 1000 ms, &changed)`
       y recorrer la lista de `ASS_Image`.
       *Verificación*: imprime cuántas imágenes hay, y para cada una `w`, `h`,
       `stride`, `dst_x`, `dst_y`. Compara esas coordenadas con lo que esperas de
       tu fixture: ahí se ve si el tamaño de frame está bien configurado.
+      *Hecho:* `cargo run -p rod-subs --example smoke`. A 1000 ms: 5 bitmaps —
+      "Subtitulo de prueba" en `(711,963)` y `(714,966)` (contorno negro y
+      relleno blanco), y "Arriba centrado" en `(719,275)`, `(717,273)`,
+      `(720,276)` (sombra, contorno, relleno rojo). El `\pos(960,300)` con
+      alineación 5 cae centrado en y=300: el frame está a 1920×1080 y `stride`
+      sale 512 porque libass alinea las máscaras.
 
 - [ ] **4. Componer en CPU.** Volcar los bitmaps sobre un buffer RGBA con
       `dst = rgb·(a·A/255) + dst·(1 − a·A/255)` y escribirlo a PNG.
@@ -72,6 +92,26 @@ libertad de memoria (`ass_free_track`), composición alfa.
 - [ ] **6. Cerrar.** Escribir en `BITACORA.md` la versión de libass, el proveedor
       de fuentes y el porcentaje de coincidencia. Ese número es la línea base
       del proyecto.
+
+## Hallazgos
+
+- **El color de `ASS_Image` es `0xRRGGBBAA`, con el alfa al revés.** No es
+  `0xAABBGGRR` como los colores del `.ass`. En el código de libass
+  (`ass_parse.h`): `_r(c) = c >> 24`, `_g = (c >> 16) & 0xFF`,
+  `_b = (c >> 8) & 0xFF`, `_a = c & 0xFF`; y ese `_a` es **transparencia**
+  (0 = opaco, 255 = invisible), la convención de ASS. Comprobado con el fixture:
+  relleno blanco `0xffffff00`, contorno negro `0x00000000`, sombra al 50 %
+  `0x00000080`, relleno rojo `0xff000000`.
+- **La lista viene en orden de pintado**: sombra, contorno, relleno. Se compone
+  en ese orden, sin ordenar.
+- **`vsnprintf` no enlaza con `msvcrt.lib`.** El callback de `ass_set_message_cb`
+  recibe un `va_list`, así que hay que formatearlo en C: `#[link(name =
+  "legacy_stdio_definitions")]`, que es donde vive el stub que exporta UCRT.
+- **`ass-9.dll` no basta.** Depende de `iconv-2.dll`, y freetype de
+  `z`/`bz2`/`libpng16`/`brotlidec`: la lista completa está en el `build.rs`.
+- **La máscara viene alineada.** `stride` (512) no es `w` (490), y la última
+  fila puede ser más corta: `stride * (h - 1) + w` es el tamaño garantizado.
+  `Bitmap::alpha()` recorta a eso a propósito.
 
 ## Qué NO hacer en este slice
 

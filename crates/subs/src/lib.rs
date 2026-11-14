@@ -1,14 +1,252 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! Envoltorio mínimo sobre libass: cargar un `.ass`, fijar el tamaño del frame y
+//! obtener los bitmaps de alfa de un instante. La composición sobre el video y
+//! la comparación con el oráculo se hacen fuera, sobre `Bitmap`.
+
+mod ffi;
+
+use core::ffi::{c_char, c_int, c_void};
+use std::ffi::CString;
+use std::marker::PhantomData;
+use std::path::Path;
+use std::sync::Mutex;
+
+/// Deja que libass elija el proveedor de fuentes de la plataforma
+/// (DirectWrite en Windows, fontconfig en Linux).
+pub const PROVEEDOR_AUTODETECT: c_int = 1;
+
+/// `ass_library_init` y el log de libass.
+///
+/// El log importa: ahí es donde libass dice qué proveedor de fuentes eligió, y
+/// ese es el punto que se rompe en silencio (sale otra tipografía y la
+/// comparación contra mpv falla por la fuente, no por el código).
+pub struct Library {
+    ptr: *mut ffi::ASS_Library,
+    // En una caja para que la dirección no cambie si `Library` se mueve: el
+    // callback de C se queda con ese puntero toda la vida de la biblioteca.
+    log: Box<Mutex<Vec<String>>>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Library {
+    pub fn new() -> Self {
+        let ptr = unsafe { ffi::ass_library_init() };
+        assert!(!ptr.is_null(), "ass_library_init devolvió nulo");
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+        let log = Box::new(Mutex::new(Vec::new()));
+        unsafe {
+            ffi::ass_set_message_cb(
+                ptr,
+                Some(recibir_mensaje),
+                &*log as *const Mutex<Vec<String>> as *mut c_void,
+            );
+        }
+
+        Self { ptr, log }
+    }
+
+    /// Directorio extra de fuentes. No hace falta para las del sistema; sí para
+    /// repartir tipografías con la app sin instalarlas.
+    pub fn anadir_fuentes(&self, dir: &Path) {
+        let Ok(dir) = CString::new(dir.to_string_lossy().as_bytes()) else {
+            return;
+        };
+        unsafe { ffi::ass_set_fonts_dir(self.ptr, dir.as_ptr()) };
+    }
+
+    /// Copia de las líneas que libass ha escrito hasta ahora.
+    pub fn log(&self) -> Vec<String> {
+        self.log.lock().map(|log| log.clone()).unwrap_or_default()
+    }
+}
+
+impl Default for Library {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for Library {
+    fn drop(&mut self) {
+        unsafe { ffi::ass_library_done(self.ptr) };
+    }
+}
+
+/// Rasterizador. Vive pegado a su `Library` (el `PhantomData` lo garantiza: no
+/// se puede soltar la biblioteca y seguir usando el renderer).
+pub struct Renderer<'a> {
+    ptr: *mut ffi::ASS_Renderer,
+    bitmaps: Vec<Bitmap>,
+    _library: PhantomData<&'a Library>,
+}
+
+impl<'a> Renderer<'a> {
+    /// El tamaño del frame es también el sistema de coordenadas de los
+    /// `\pos` del `.ass`, así que conviene que coincida con el del video.
+    pub fn new(library: &'a Library, ancho: u32, alto: u32) -> Self {
+        let ptr = unsafe { ffi::ass_renderer_init(library.ptr) };
+        assert!(!ptr.is_null(), "ass_renderer_init devolvió nulo");
+
+        let mut renderer = Self {
+            ptr,
+            bitmaps: Vec::new(),
+            _library: PhantomData,
+        };
+        renderer.set_frame_size(ancho, alto);
+        renderer
+    }
+
+    pub fn set_frame_size(&mut self, ancho: u32, alto: u32) {
+        unsafe {
+            ffi::ass_set_frame_size(self.ptr, ancho as c_int, alto as c_int);
+            // Tamaño de la imagen de origen: sin esto, `\be`, `\blur` y los
+            // transforms 3D se calculan con un aspecto inventado.
+            ffi::ass_set_storage_size(self.ptr, ancho as c_int, alto as c_int);
+            ffi::ass_set_pixel_aspect(self.ptr, 1.0);
+        }
+    }
+
+    /// Márgenes del video dentro de la ventana. Con `usar = false` libass
+    /// ignora los márgenes para colocar los eventos normales (lo que hace mpv
+    /// con letterbox).
+    pub fn set_margins(&mut self, arriba: i32, abajo: i32, izq: i32, der: i32, usar: bool) {
+        unsafe {
+            ffi::ass_set_margins(
+                self.ptr,
+                arriba as c_int,
+                abajo as c_int,
+                izq as c_int,
+                der as c_int,
+            );
+            ffi::ass_set_use_margins(self.ptr, usar as c_int);
+        }
+    }
+
+    /// Inicializa el proveedor de fuentes. Las siguientes llamadas a `log()`
+    /// dicen cuál eligió.
+    pub fn usar_fuentes(&mut self, proveedor: c_int) {
+        let familia = c"Arial";
+        unsafe {
+            ffi::ass_set_fonts(
+                self.ptr,
+                std::ptr::null(), // fuente por defecto: la de la familia
+                familia.as_ptr(),
+                proveedor,
+                std::ptr::null(), // config: solo lo usa fontconfig
+                1,
+            );
+        }
+    }
+
+    /// Rasteriza el instante `ms` y devuelve sus bitmaps. Son válidos hasta la
+    /// próxima llamada a `render` (el `&mut self` lo hace cumplir).
+    pub fn render(&mut self, track: &Track<'_>, ms: i64) -> &[Bitmap] {
+        let mut cambio = 0;
+        let head = unsafe { ffi::ass_render_frame(self.ptr, track.ptr, ms, &mut cambio) };
+
+        self.bitmaps.clear();
+        let mut nodo = head;
+        while !nodo.is_null() {
+            let imagen = unsafe { &*nodo };
+
+            // La última fila no está rellena hasta `stride`: el tamaño
+            // garantizado es `stride * (h - 1) + w`. Recortar aquí convierte
+            // una lectura fuera de rango en un índice fuera de rango (pánico).
+            let filas = imagen.h.max(1) as usize;
+            let alpha_len = imagen.stride as usize * (filas - 1) + imagen.w as usize;
+
+            self.bitmaps.push(Bitmap {
+                ancho: imagen.w as u32,
+                alto: imagen.h as u32,
+                stride: imagen.stride as usize,
+                color: imagen.color,
+                x: imagen.dst_x,
+                y: imagen.dst_y,
+                alpha: imagen.bitmap,
+                alpha_len,
+            });
+
+            nodo = imagen.next;
+        }
+
+        &self.bitmaps
+    }
+}
+
+impl Drop for Renderer<'_> {
+    fn drop(&mut self) {
+        unsafe { ffi::ass_renderer_done(self.ptr) };
+    }
+}
+
+/// Un trozo de subtítulo ya rasterizado: una máscara de alfa y su color.
+pub struct Bitmap {
+    pub ancho: u32,
+    pub alto: u32,
+    /// Bytes por fila. La última fila puede ser más corta: ver `alpha()`.
+    pub stride: usize,
+    /// Color y alfa empaquetados tal como los da libass.
+    pub color: u32,
+    /// Esquina superior izquierda dentro del frame.
+    pub x: i32,
+    pub y: i32,
+    alpha: *const u8,
+    alpha_len: usize,
+}
+
+impl Bitmap {
+    /// Cobertura de 0 (transparente) a 255 (opaco), por filas de `stride`
+    /// bytes. La última fila solo tiene `ancho` bytes válidos: indexar
+    /// `y * stride + x` sin recortar revienta con pánico en vez de leer basura.
+    pub fn alpha(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.alpha, self.alpha_len) }
+    }
+}
+
+/// Un `.ass` ya parseado.
+pub struct Track<'a> {
+    ptr: *mut ffi::ASS_Track,
+    _library: PhantomData<&'a Library>,
+}
+
+impl<'a> Track<'a> {
+    pub fn parse(library: &'a Library, texto: &str) -> Self {
+        // libass pide un buffer mutable; no lo modifica, pero la firma es C.
+        let mut buf = texto.as_bytes().to_vec();
+        let ptr = unsafe {
+            ffi::ass_read_memory(
+                library.ptr,
+                buf.as_mut_ptr().cast(),
+                buf.len(),
+                c"UTF-8".as_ptr(),
+            )
+        };
+        assert!(!ptr.is_null(), "ass_read_memory devolvió nulo");
+
+        Self {
+            ptr,
+            _library: PhantomData,
+        }
+    }
+}
+
+impl Drop for Track<'_> {
+    fn drop(&mut self) {
+        unsafe { ffi::ass_free_track(self.ptr) };
+    }
+}
+
+unsafe extern "C" fn recibir_mensaje(
+    _nivel: c_int,
+    fmt: *const c_char,
+    args: ffi::va_list,
+    data: *mut c_void,
+) {
+    let texto = unsafe { ffi::formatear(fmt, args) };
+    if texto.is_empty() {
+        return;
+    }
+
+    let log = unsafe { &*(data as *const Mutex<Vec<String>>) };
+    if let Ok(mut log) = log.lock() {
+        log.push(texto);
     }
 }
