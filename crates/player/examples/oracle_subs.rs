@@ -2,12 +2,22 @@
 //! el libass que trae libmpv dentro. Su PNG es la referencia contra la que se
 //! compara el render propio, así que aquí no se escribe ninguna lógica de
 //! subtítulos: solo se le pide a mpv su versión de la verdad.
+//!
+//! Con `--sin-subs` guarda el mismo frame sin subtítulos: es el fondo sobre el
+//! que hay que componer para que la comparación de píxeles tenga sentido.
 
 const W: usize = 1920;
 const H: usize = 1080;
 const INSTANTE: f64 = 1.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let sin_subs = std::env::args().any(|arg| arg == "--sin-subs");
+    let salida = if sin_subs {
+        "testdata/frame-sin-subs.png"
+    } else {
+        "testdata/oracle-subs.png"
+    };
+
     let player = rod_player::Player::open("testdata/clip-1080p.mp4")?;
 
     // hr-seek: buscar por tiempo y no por keyframe.
@@ -15,10 +25,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // No dejar que mpv reinterpreta los estilos del .ass.
     player.mpv().set_property("sub-ass-override", "no")?;
     player.mpv().set_property("pause", "yes")?;
-    player.mpv().command(
-        "sub-add",
-        &["crates/subs/tests/fixtures/basico.ass", "select"],
-    )?;
+    if !sin_subs {
+        player.mpv().command(
+            "sub-add",
+            &["crates/subs/tests/fixtures/basico.ass", "select"],
+        )?;
+    }
     player
         .mpv()
         .command("seek", &[&INSTANTE.to_string(), "absolute", "exact"])?;
@@ -29,13 +41,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut buf = vec![0u8; W * H * 4];
     let mut ultimo = -1.0f64;
+    // `time-pos` se actualiza al pedir el seek, pero el frame que mpv entrega
+    // todavía puede ser el de antes: el aviso de que el seek terminó es
+    // `playback-restart`, no la propiedad.
+    let mut reiniciado = false;
 
     for _ in 0..500 {
+        while let Some(Ok(evento)) = player.mpv().wait_event(0.0) {
+            if matches!(evento, libmpv2::events::Event::PlaybackRestart) {
+                reiniciado = true;
+            }
+        }
+
         if player.update() & 1 != 0 {
             player.render(&mut buf, W, H)?;
             ultimo = player.mpv().get_property::<f64>("time-pos").unwrap_or(-1.0);
 
-            if ultimo >= INSTANTE - 0.01 {
+            if reiniciado && ultimo >= INSTANTE - 0.01 {
                 break;
             }
         }
@@ -58,9 +80,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     image::RgbImage::from_raw(W as u32, H as u32, rgb)
         .expect("el buffer no mide W*H*3")
-        .save("testdata/oracle-subs.png")?;
+        .save(salida)?;
 
-    println!("guardado testdata/oracle-subs.png");
+    println!("guardado {salida}");
 
     Ok(())
 }

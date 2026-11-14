@@ -31,6 +31,14 @@ libertad de memoria (`ass_free_track`), composición alfa.
       carga describe el frame anterior, y si se consume primero el render
       devuelve el frame 0 con el `time-pos` ya en 1.0. Cuesta 15 minutos y el
       player real va a repetirlo.
+      *Y no basta con mirar `time-pos`*: se actualiza al pedir el seek, mucho
+      antes de que llegue el frame. El aviso de que el seek terminó es el evento
+      `playback-restart`. Sin esperarlo, el PNG sale a veces con el frame 0 (se
+      vio en la captura: timecode quemado `00:00:00.000`, caso 0). Con el evento,
+      timecode `00:00:01.000`, caso 30.
+      *Dos salidas*: `oracle_subs` guarda `testdata/oracle-subs.png` y, con
+      `--sin-subs`, `testdata/frame-sin-subs.png`: el mismo frame sin
+      subtítulos, que es el fondo sobre el que componer para comparar píxeles.
 - [x] **Verificar el proveedor de fuentes**, que es el punto delicado en Windows:
       inicializar libass con `ASS_FONTPROVIDER_AUTODETECT` y leer el log. Debe
       decir que usa *directwrite* en Windows y *fontconfig* en Linux.
