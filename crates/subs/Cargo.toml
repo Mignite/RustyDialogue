@@ -4,3 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 [dependencies]
+
+[dev-dependencies]
+# Los examples leen y escriben PNG (el fondo limpio y el render propio).
+image = { version = "0.25.10", default-features = false, features = ["png"] }
